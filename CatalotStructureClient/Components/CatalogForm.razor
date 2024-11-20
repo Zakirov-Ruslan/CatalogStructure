@@ -1,0 +1,164 @@
+﻿@using CatalogStructureDto
+@using CatalogStructureClient.Models
+@using CatalogStructureClient.Services
+@inject CatalogAPIService CatalogService
+
+<h3 style="margin-bottom: 0px">Catalog actions</h3>
+<p style="margin: 5px 0">Current catalog: @(_currentItem?.Name ?? "Root")</p>
+<form>
+    <div class="add">
+        <input type="text" @bind="_newItem.Name" placeholder="Name" />
+        <p>Parent:</p>
+        <InputSelect aria-label="Select parent" @bind-Value=@_newItem.ParentId @onclick="UpdateDropDown">
+            <option value="">Root</option>
+            @foreach (var item in _dropdownItems)
+            {
+                <option value="@item.Id">@item.Name</option>
+            }
+        </InputSelect>
+        <button type ="button" @onclick="CreateCatalog">Add</button>
+    </div>
+    @if (_currentItem != null)
+    {
+    <div class="edit">
+        <input type="text" @bind="_currentItem.Name" placeholder="Name" />
+        <p>Parent:</p>
+        <InputSelect aria-label="Select parent" @bind-Value=_currentItem.ParentId @onclick="UpdateDropDown">
+            <option value="">Root</option>
+            @foreach (var item in _dropdownItems)
+            {
+                <option value="@item.Id">@item.Name</option>
+            }
+        </InputSelect>
+        <button type="button" @onclick="UpdateCatalog">Edit</button>
+    </div>
+    }
+    <div class="delete">
+        <button type="button" @onclick="DeleteCatalog">Delete</button>
+    </div>
+    <span class="exceptions">@_exceptionMessage</span>
+</form>
+
+@code {
+    [Parameter]
+    public List<CatalogItem> RootCatalogs { get; set; } = new ();
+
+    // CRUD operations events
+    public Action<CatalogItemDto> OnCreate { get; set; }
+    public Action<CatalogItemUpdateDto> OnUpdate { get; set; }
+    public Action<int> OnDelete { get; set; }
+
+    private CatalogItemCreateDto _newItem = new();
+    private CatalogItem? _currentItem = new();
+    private List<DropdownItem> _dropdownItems = new() { new DropdownItem() { Id = null, Name = "Root" } };
+    private string _exceptionMessage = "";
+
+    public void SetItem(CatalogItem item)
+    {
+        UpdateDropDown();
+
+        _newItem.ParentId = item.Id;
+
+        _currentItem = new();
+        _currentItem.Id = item.Id;
+        _currentItem.ParentId = item.ParentId;
+        _currentItem.Name = item.Name;
+
+        StateHasChanged();
+    }
+
+    private async Task CreateCatalog()
+    {
+        if (_newItem.Name == null || _newItem.Name == "")
+        {
+            _exceptionMessage = "Creatable name cannot be empty";
+            return;
+        }
+
+        try
+        {
+            var createdItemDto = await CatalogService.CreateCatalogAsync(_newItem);
+
+            OnCreate?.Invoke(createdItemDto);
+
+            _exceptionMessage = "";
+        }
+        catch (Exception ex)
+        {
+            _exceptionMessage = ex.Message;
+        }
+    }
+
+    private async Task UpdateCatalog()
+    {
+        if (_currentItem.Name == null || _currentItem.Name == "")
+        {
+            _exceptionMessage = "Updated name cannot be empty";
+            return;
+        }
+
+        var updateItem = CatalogItem.MapToUpdateDto(_currentItem);
+        try
+        {
+            await CatalogService.UpdateCatalogAsync(_currentItem.Id, updateItem);
+
+            OnUpdate?.Invoke(updateItem);
+
+            _exceptionMessage = "";
+        }
+        catch (Exception ex)
+        {
+            _exceptionMessage = ex.Message;
+        }
+    }
+
+    private async Task DeleteCatalog()
+    {
+        try
+        {
+            await CatalogService.DeleteCatalogAsync(_currentItem.Id);
+
+            OnDelete?.Invoke(_currentItem.Id);
+
+            _exceptionMessage = "";
+            _newItem.ParentId = null;
+        }
+        catch (Exception ex)
+        {
+            _exceptionMessage = ex.Message;
+        }
+    }
+
+    // Make dropdown list from tree structure
+    private void UpdateDropDown()
+    {
+        _dropdownItems = FlattenTree(RootCatalogs);
+    }
+
+    public static List<DropdownItem> FlattenTree(List<CatalogItem> tree)
+    {
+        var result = new List<DropdownItem>();
+
+        foreach (var node in tree)
+        {
+            result.Add(new DropdownItem
+            {
+                Id = node.Id,
+                Name = node.Name,
+            });
+
+            if (node.Children != null && node.Children.Any())
+            {
+                result.AddRange(FlattenTree(node.Children));
+            }
+        }
+
+        return result;
+    }
+
+    public class DropdownItem
+    {
+        public int? Id { get; set; }
+        public string Name { get; set; }
+    }
+}

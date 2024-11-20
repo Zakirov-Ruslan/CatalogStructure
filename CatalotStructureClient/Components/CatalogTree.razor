@@ -1,0 +1,122 @@
+﻿@using CatalogStructureClient.Models
+@using CatalogStructureClient.Services
+@using CatalogStructureDto
+@inject CatalogAPIService CatalogService
+
+<div class="catalog-tree">
+    <h3 style="width:600px">Catalog Structure</h3>
+
+    @if (_rootItems == null)
+    {
+        <p>Loading...</p>
+    }
+    else
+    {
+        <ul>
+            <CascadingValue Value="_catalogForm">
+                @foreach (var item in _rootItems)
+                {
+                    <CatalogNode Item="item"/>
+                }
+            </CascadingValue>
+        </ul>
+    }
+    <CatalogForm @ref="_catalogForm" RootCatalogs="_rootItems" />
+</div>
+
+@code {
+    private List<CatalogItem>? _rootItems = new();
+    private CatalogItemCreateDto _newItem = new CatalogItemCreateDto();
+    private CatalogForm _catalogForm;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rootItemsDto = await CatalogService.GetCatalogTreeAsync();
+        _rootItems = rootItemsDto.Select(CatalogItem.MapFromDto).ToList();
+
+        // Initializing events to make changes
+        _catalogForm.OnCreate += AddItem;
+        _catalogForm.OnUpdate += UpdateItem;
+        _catalogForm.OnDelete += DeleteItem;
+    }
+
+    private void AddItem(CatalogItemDto itemCreateDto)
+    {
+        // Creating new item
+        var parentCatalogItem = _rootItems.FindNode(node => itemCreateDto.ParentId == node.Id);
+        var createdCatalogItem = CatalogItem.MapFromDto(itemCreateDto);
+
+        // Setting parent
+        // Parent == null means item is root
+        if (parentCatalogItem == null)
+            _rootItems.Add(createdCatalogItem);
+        else
+            parentCatalogItem.Children.Add(createdCatalogItem);
+
+        SetBranchVisible(createdCatalogItem);
+
+        StateHasChanged();
+    }
+
+    private void UpdateItem(CatalogItemUpdateDto itemUpdateDto)
+    {
+        // Updating name and parent
+        var existingItem = _rootItems.FindNode(node => itemUpdateDto.Id == node.Id);
+        if (existingItem == null)
+            return;
+
+        existingItem.Name = itemUpdateDto.Name;
+        if (existingItem.ParentId != itemUpdateDto.ParentId)
+        {
+            // Changing parent 
+            // Remove child from old parent
+            // Parent == null means item is root
+            var existingParentItem = _rootItems.FindNode(node => existingItem.ParentId == node.Id);
+            if (existingParentItem == null && _rootItems.Contains(existingItem))
+                _rootItems.RemoveAll(c => c.Id == existingItem.Id);
+            else
+                existingParentItem.Children.RemoveAll(c => c.Id == existingItem.Id);
+
+            // Add child for new parrent
+            var newParent = _rootItems.FindNode(node => itemUpdateDto.ParentId == node.Id);
+            if (newParent == null)
+                _rootItems.Add(existingItem);
+            else
+                newParent.Children.Add(existingItem);
+            existingItem.ParentId = itemUpdateDto.ParentId;
+
+            SetBranchVisible(existingItem);
+        }
+
+        StateHasChanged();
+    }
+
+    private void DeleteItem(int id)
+    {
+        // Deleting item
+        var itemToDelete = _rootItems.FindNode(node => node.Id == id);
+        var parentItem = _rootItems.FindNode(node => node.Id == itemToDelete.ParentId);
+
+        // Parent == null means item is root
+        if (parentItem == null)
+            _rootItems.RemoveAll(catalog => catalog.Id == itemToDelete.Id);
+        else
+            parentItem.Children.RemoveAll(catalog => catalog.Id == itemToDelete.Id);
+
+        StateHasChanged();
+    }
+
+    public void SetBranchVisible(CatalogItem? item)
+    {
+        var parent = _rootItems.FindNode(node => node.Id == item.ParentId);
+        if (parent == null)
+        {
+            return;
+        }
+        else
+        {
+            parent.IsChildVisible = true;
+            SetBranchVisible(parent);
+        }
+    }
+}

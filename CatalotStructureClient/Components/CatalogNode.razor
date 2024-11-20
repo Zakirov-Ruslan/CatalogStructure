@@ -1,0 +1,54 @@
+﻿@using CatalogStructureClient.Models
+@using CatalogStructureClient.Services
+@using CatalogStructureDto
+@inject CatalogAPIService CatalogService
+
+<div class="catalog-node">
+    <li>
+        <img src="/down-arrow.svg" alt="down-arrow" class="down-arrow" @onclick="ChangeVisible"></img>
+        <span class="item-name" @onclick="NodeClick">
+            @Item.Name
+        </span>
+        @if (Item.IsChildVisible)
+        {
+            <ul>
+                @foreach (var child in Item.Children)
+                {
+                    <CatalogNode Item="child"/>
+                }
+            </ul>
+        }
+    </li>
+</div>
+
+
+@code {
+    [Parameter]
+    public CatalogItem Item { get; set; }
+
+    [CascadingParameter] 
+    public CatalogForm CatalogForm { get; set; }
+
+    private async Task ChangeVisible()
+    {
+        // Shows/hodes nodes. On set visible synchronizes childs from API
+        Item.IsChildVisible = !Item.IsChildVisible;
+        if (Item.IsChildVisible)
+        {
+            var itemDto = await CatalogService.GetCatalogByIdAsync(Item.Id);
+
+            var newChildren = itemDto.Children.Where(c => !Item.Children.Any(x => x.Id == c.Id)).Select(CatalogItem.MapFromDto).ToList();
+            var deletedChildren = Item.Children.Where(c => !itemDto.Children.Any(x => x.Id == c.Id)).ToList();
+
+            Item.Children.AddRange(newChildren);
+            Item.Children.RemoveAll(c => deletedChildren.Select(x => x.Id).Contains(c.Id));
+            StateHasChanged();
+        }
+    }
+
+    private void NodeClick()
+    {
+        // Sets node on form to make any operations
+        CatalogForm.SetItem(Item);
+    }
+}
