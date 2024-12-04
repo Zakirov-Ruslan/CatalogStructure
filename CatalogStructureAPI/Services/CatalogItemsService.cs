@@ -2,7 +2,6 @@
 using CatalogStructureAPI.ORM;
 using CatalogStructureDto;
 using Microsoft.EntityFrameworkCore;
-using System.Xml.Linq;
 
 namespace CatalogStructureAPI.Services
 {
@@ -65,19 +64,16 @@ namespace CatalogStructureAPI.Services
         {
             if (catalogItemUpdateDto.ParentId.HasValue)
             {
-                var parentId = catalogItemUpdateDto.ParentId;
+                var parentId = catalogItemUpdateDto.ParentId.Value;
                 var parent = await _context.CatalogItems.FindAsync(parentId);
                 if (parent == null)
                     throw new ArgumentException("Parent doesn exist");
                 if (parentId == catalogItemUpdateDto.Id)
                     throw new ArgumentException("Parent can't be the same as creatable object");
 
-                if (catalogItemUpdateDto.ParentId.HasValue)
-                {
-                    bool isDescendant = await IsDescendantAsync(catalogItemUpdateDto.Id, catalogItemUpdateDto.ParentId.Value);
-                    if (isDescendant)
-                        throw new ArgumentException("New parent can't be a child of current node");
-                }
+                bool isDescendant = await IsDescendantAsync(catalogItemUpdateDto.Id, parentId);
+                if (isDescendant)
+                    throw new ArgumentException("New parent can't be a child of current node");
             }
 
             var catalogItem = _mapper.Map<CatalogItem>(catalogItemUpdateDto);
